@@ -1,0 +1,66 @@
+#lang racket/base
+(require racket/set rackunit/chk)
+
+(provide try-create-binary-operator
+         try-create-mathematical-group)
+
+(struct binary-operator (op-set proc))
+(struct mathematical-group (group-set op unit inv-map))
+
+(define (try-create-binary-operator op-set proc)
+  (let ((op-lst (set->list op-set)))
+    (define (in-codomain? a b)
+      (set-member? op-set (proc a b)))
+    (if (andmap in-codomain? op-set op-set)
+        (binary-operator op-set proc)
+        #f)))
+
+(define (keep-binary-operator-combination-rule? op)
+  (let* ((op-set (binary-operator-op-set op))
+         (proc (binary-operator-proc op))
+         (op-lst (set->list op-set)))
+    (define (keep-combination-rule? a b c)
+      (equal? (proc (proc a b) c) (proc a (proc b c))))
+    (andmap keep-combination-rule? op-lst op-lst op-lst)))
+
+(define (find-binary-operator-unit-element op)
+  (let ((proc (binary-operator-proc op))
+        (op-set (binary-operator-op-set op)))
+    (define (can-reduce? candidate elem)
+      (and (equal? (proc candidate elem) elem)
+           (equal? (proc elem candidate) elem)))
+    (define (is-unit? candidate)
+      (andmap (lambda (x) (can-reduce? candidate x)) op-set))
+    (findf is-unit? (set->list op-set))))
+
+(define (has-binary-operator-inverse-element? op)
+  (let* ((op-set (binary-operator-op-set op))
+         (proc (binary-operator-proc op))
+         (op-lst (set->list op-set))
+         (unit (find-binary-operator-unit-element op)))
+    (define (is-left-inverse? elem predicate)
+      (equal? (proc predicate elem) unit))
+    (define (find-left-inverse elem)
+      (findf (lambda (x) (is-left-inverse? elem x)) op-lst))
+    (define (is-right-inverse? elem predicate)
+      (equal? (proc elem predicate) unit))
+    (define (has-inverse-element? elem)
+      (let ((predicate (find-left-inverse elem)))
+        (and predicate (is-right-inverse? elem predicate))))
+    (andmap has-inverse-element? op-lst)))
+
+(define (try-create-mathematical-group op)
+  (and (keep-binary-operator-combination-rule? op)
+       (find-binary-operator-unit-element op)
+       (has-binary-operator-inverse-element? op)
+       (mathematical-group (binary-operator-op-set op)
+                           (binary-operator-proc op))))
+
+; unittest
+
+(define set-a (list 1 2 3))
+(define graph-a '((1 1 1) (2 2 2) (3 3 3)))
+(define (op-a x y) (list-ref (list-ref graph-a (sub1 x)) (sub1 y)))
+(define bop-a (try-create-binary-operator set-a op-a))
+(chk (binary-operator? bop-a) #t)
+(chk (try-create-mathematical-group bop-a) #f)
